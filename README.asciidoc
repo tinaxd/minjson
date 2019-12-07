@@ -1,0 +1,4 @@
+MinJson
+========
+
+image:https://travis-ci.org/tinaxd/minjson.svg?branch=master["Build Status", link="https://travis-ci.org/tinaxd/minjson"]
