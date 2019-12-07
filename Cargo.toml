@@ -1,0 +1,9 @@
+[package]
+name = "minjson"
+version = "0.1.0"
+authors = ["tinaxd <31384595+tinaxd@users.noreply.github.com>"]
+edition = "2019"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
