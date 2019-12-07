@@ -1,3 +1,4 @@
+os: windows
 language: rust
 rust:
 - nightly
@@ -9,5 +10,6 @@ deploy:
   api_key:
     secure: wWM0b6zmzHez7I05ih74nxYxVhGf8vBUQs9VrLtgQliDqaszCwtn2sJMNEniTPHitMdD5smttL18S3vIgJRsDEPThtcVLxDzIThcKLepPq1gU+yDTapr7BiOp3y9WXndp8YQm7GoJgT0+CykVsCWxOBbJNUKfLF1ODtZJpYrG9UfxVK0b89+3s5foB8pQdSvnZL3/G0iAKMzRKdYEEni9eRuHiBm/914W/J9wOjJV53KQrCdXuKo3+iL2DALxLkwpNlUEdWyZ+B2amSVN6EoSR1hCWfxxMdA9DzKteOVmsVwob2gAgWB6GO92Yme69+l+NmqdHrVkhXwAHKcAf9maQ+Xma9iYuYavB3nk6+427/IbOndt3BWbqRJcY6iq0TKfQ56qtHHpbM7rYN9VHdeRCMziA4MUzS/dYgo+21/VvMUgwG6e+hcvv9YstfE9dDqDdtuV7GEnWF32GKsy4QcewaytNUsEWMUyo84VNg8Fox54pWonXpdLTF+ye7yOnmaV+jmoFDFGUvTlkOw5/KvUtTVl/FdBMSOyIZDR02kk//0bA1HwwzCh4bNQ1m6kuX39PlboPPZWjvOgociFlodTtPvf+84Y0fT8zjNQUeuKnG4w/c2/pb3+fk4PJ1dbGftB+R6cE9xSrzgCkVkYF6BM1DthnnE1DQC+e/p3p1zew8=
   file: target/release/minjson.exe
+  skip_cleanup: true
   on:
-    repo: tinaxd/minjson
+    tags: true
