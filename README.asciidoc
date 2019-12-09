@@ -2,3 +2,9 @@ MinJson
 ========
 
 image:https://travis-ci.org/tinaxd/minjson.svg?branch=master["Build Status", link="https://travis-ci.org/tinaxd/minjson"]
+
+How to use
+----------
+```bash
+cat test.json | ./minjson.exe > test.min.json
+```
