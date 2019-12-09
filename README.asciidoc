@@ -6,5 +6,6 @@ image:https://travis-ci.org/tinaxd/minjson.svg?branch=master["Build Status", lin
 How to use
 ----------
 ```bash
-cat test.json | ./minjson.exe > test.min.json
+cat test.json | ./minjson.exe minify > test.min.json
+cat test.json | ./minjson.exe pretty > test.pretty.json
 ```
