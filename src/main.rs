@@ -20,7 +20,7 @@ fn main() -> () {
 					.long("mode")
 					.required(true)
 					.takes_value(true)
-					.possible_values(&["minify", "pretty"])
+					.possible_values(&["minify", "pretty", "inspect"])
 					.value_name("MODE")
 					)
 				.arg(Arg::with_name("out")
@@ -58,8 +58,13 @@ fn main() -> () {
     	res = minjson::minimize_json(&strbuf);
     } else if mode == "pretty" {
     	res = minjson::pretty_json(&strbuf, &minjson::PrettySetting{indent_width: 2});
+    } else if mode == "inspect" {
+    	match minjson::build_json_graph(&strbuf) {
+    		Ok(g) => res = format!("{:#?}", g),
+    		Err(e) => res = format!("{}\n", e.to_string()),
+    	}
     } else {
-    	unreachable!();	
+    	unreachable!()
     }
 
     if let Some(outpath) = app.value_of("out") {
