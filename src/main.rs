@@ -20,7 +20,7 @@ fn main() -> () {
 					.long("mode")
 					.required(true)
 					.takes_value(true)
-					.possible_values(&["minify", "pretty", "inspect"])
+					.possible_values(&["minify", "pretty", "inspect", "diff"])
 					.value_name("MODE")
 					)
 				.arg(Arg::with_name("out")
@@ -30,6 +30,10 @@ fn main() -> () {
 					)
 				.arg(Arg::with_name("in")
 					.long("in")
+					.takes_value(true)
+					.value_name("FILEPATH"))
+				.arg(Arg::with_name("in2")
+					.long("in2")
 					.takes_value(true)
 					.value_name("FILEPATH"))
 				.get_matches();
@@ -63,6 +67,36 @@ fn main() -> () {
     		Ok(g) => res = format!("{:#?}", g),
     		Err(e) => res = format!("{}\n", e.to_string()),
     	}
+    } else if mode == "diff" {
+    	if let Some(in2path) = app.value_of("in2") {
+    		let mut strbuf2 = String::new();
+    		match File::open(in2path) {
+				Err(e) => {
+					eprintln!("{}", e);
+					return;
+				},
+
+				Ok(infile) => {
+					let mut bf = BufReader::new(infile);
+					bf.read_to_string(&mut strbuf2).expect("Unable to read json");
+				}
+			}
+			let diffs = minjson::structure_diff(&strbuf, &strbuf2, minjson::DiffSetting::default());
+			match diffs {
+				Ok(ds) => {
+					let mut buf = String::new();
+					for d in &ds {
+						buf.push_str(&pretty_diff(d));
+						buf.push('\n');
+					}
+					res = buf;
+				},
+				Err(e) => res = e.to_string(),
+			}
+    	} else {
+    		eprintln!("Must specify in2 option");
+    		return;
+    	}
     } else {
     	unreachable!()
     }
@@ -83,4 +117,21 @@ fn main() -> () {
     	// stdout output
     	print!("{}", res);
     }
+}
+
+fn pretty_diff(diff: &minjson::JsonDiff) -> String {
+	use minjson::DiffType::*;
+
+	let head = match diff.diff_type {
+		Added => "+++",
+		Deleted => "---",
+		Modified => "***",
+	};
+
+	let question = String::from("?");
+	let from = diff.from_desc.as_ref().unwrap_or(&question);
+	let to = diff.to_desc.as_ref().unwrap_or(&question);
+	let path = &diff.base_path;
+
+	format!("{} {} -> {} in {}", head, from, to, path)
 }

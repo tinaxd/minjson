@@ -423,6 +423,204 @@ pub fn build_json_graph(json: &str) -> Result<JsonElement, String> {
 	parse_json(&mut lexer)
 }
 
-pub fn data_diff(j1: &str, j2: &str) {
-	unimplemented!()
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum DiffType {
+	Added, Deleted, Modified
+}
+
+impl std::fmt::Display for DiffType {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+		use DiffType::*;
+		let tok = match self {
+			Added => "+++",
+			Deleted => "---",
+			Modified => "***", 
+		};
+		write!(formatter, "{}", tok)
+	}
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct JsonDiff {
+	pub diff_type: DiffType,
+	pub from_desc: Option<String>,
+	pub to_desc: Option<String>,
+	pub base_path: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DiffSetting {
+	pub floatDiffThreashold: f64,
+}
+
+impl Default for DiffSetting {
+	fn default() -> DiffSetting {
+		DiffSetting {
+			floatDiffThreashold: 10e-6
+		}
+	}
+}
+
+pub fn structure_diff(base_json: &str, compared_json: &str, settings: DiffSetting) -> Result<Vec<JsonDiff>, String> {
+	let base_g = build_json_graph(base_json);
+	if base_g.is_err() {
+		return Err(base_g.unwrap_err().to_string());
+	}
+	let base_g = base_g.unwrap();
+	let compared_g = build_json_graph(compared_json);
+	if compared_g.is_err() {
+		return Err(compared_g.unwrap_err().to_string());
+	}
+	let compared_g = compared_g.unwrap();
+
+	Ok(element_diff(&base_g, &compared_g, "", settings))
+}
+
+fn element_diff(base_el: &JsonElement, compared_el: &JsonElement, base_path: &str, settings: DiffSetting) -> Vec<JsonDiff> {
+	use JsonElement::*;
+	use DiffType::*;
+
+	let path_sec = "::";
+
+	// Helper function
+	let make_json_type_diff = |a: &JsonElement, b: &JsonElement| -> Vec<JsonDiff> {
+		vec!(JsonDiff {
+			diff_type: Modified,
+			from_desc: Some(format!("{:#?}", a)),
+			to_desc: Some(format!("{:#?}", b)),
+			base_path: base_path.to_string(),
+		})
+	};
+
+	match base_el {
+		JsonNumber(base_num) => {
+			match compared_el {
+				JsonNumber(compared_num) => {
+					if (base_num - compared_num).abs() < settings.floatDiffThreashold {
+						Vec::new()
+					} else {
+						vec!(JsonDiff {
+							diff_type: Modified,
+							from_desc: Some(format!("{}", base_num)),
+							to_desc: Some(format!("{}", compared_num)),
+							base_path: base_path.to_string(),
+						})
+					}
+				},
+				_ => {  // Number vs (other than Number)
+					make_json_type_diff(base_el, compared_el)
+				}
+			}
+		},
+
+		JsonString(base_str) => {
+			match compared_el {
+				JsonString(compared_str) => {
+					if base_str == compared_str {
+						Vec::new()
+					} else {
+						vec!(JsonDiff {
+							diff_type: Modified,
+							from_desc: Some(base_str.to_string()),
+							to_desc: Some(compared_str.to_string()),
+							base_path: base_path.to_string(),
+						})
+					}
+				},
+				_ => {
+					make_json_type_diff(base_el, compared_el)
+				}
+			}
+		},
+
+		JsonArray(base_vec) => {
+			match compared_el {
+				JsonArray(compared_vec) => {
+					let mut diffs = Vec::new();
+					if base_vec.len() == compared_vec.len() {
+						for (b_elm, c_elm) in base_vec.iter().zip(compared_vec.iter()) {
+							diffs.extend_from_slice(&element_diff(&b_elm, &c_elm, base_path, settings));
+						}
+					} else if base_vec.len() < compared_vec.len() {
+						let last = base_vec.len();
+						for (i, b_elm) in base_vec.iter().enumerate() {
+							diffs.extend_from_slice(&element_diff(&b_elm, &compared_vec[i], base_path, settings));
+						}
+						for new_elm in &compared_vec[last..] {
+							diffs.push(JsonDiff {
+								diff_type: Added,
+								from_desc: None,
+								to_desc: Some(format!("{:#?}", new_elm)),
+								base_path: base_path.to_string(),
+							})
+						}
+					} else {
+						let last = compared_vec.len();
+						for (i, c_elm) in compared_vec.iter().enumerate() {
+							diffs.extend_from_slice(&element_diff(&base_vec[i], &c_elm, base_path, settings));
+						}
+						for del_elm in &base_vec[last..] {
+							diffs.push(JsonDiff {
+								diff_type: Deleted,
+								from_desc: Some(format!("{:#?}", del_elm)),
+								to_desc: None,
+								base_path: base_path.to_string(),
+							})
+						}
+					}
+					diffs
+				},
+
+				_ => {
+					make_json_type_diff(base_el, compared_el)
+				}
+			}
+		},
+
+		JsonObject(base_obj) => {
+			match compared_el {
+				JsonObject(compared_obj) => {
+					let mut diffs = Vec::new();
+
+					for (bk, bv) in base_obj.iter() {
+						let new_bp = format!("{}{}{}", base_path, path_sec, bk);
+						match compared_obj.get(bk) {
+							Some(cv) => {
+								diffs.extend_from_slice(&element_diff(&bv, &cv, &new_bp, settings));
+							},
+							None => {
+								diffs.push(JsonDiff {
+									diff_type: Deleted,
+									from_desc: Some(format!("{:#?}", bv)),
+									to_desc: None,
+									base_path: new_bp,
+								})
+							}
+						}
+					}
+
+					for (ck, cv) in compared_obj.iter() {
+						let new_bp = format!("{}{}{}", base_path, path_sec, ck);
+						match base_obj.get(ck) {
+							Some(_) => {},
+							None => {
+								diffs.push(JsonDiff {
+									diff_type: Added,
+									from_desc: None,
+									to_desc: Some(format!("{:#?}", cv)),
+									base_path: new_bp,
+								})
+							}
+						}
+					}
+
+					diffs
+				},
+
+				_ => {
+					make_json_type_diff(base_el, compared_el)
+				}
+			}
+		}
+	}
 }
