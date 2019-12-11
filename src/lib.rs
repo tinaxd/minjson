@@ -486,8 +486,8 @@ fn element_diff(base_el: &JsonElement, compared_el: &JsonElement, base_path: &st
 	let make_json_type_diff = |a: &JsonElement, b: &JsonElement| -> Vec<JsonDiff> {
 		vec!(JsonDiff {
 			diff_type: Modified,
-			from_desc: Some(format!("{:#?}", a)),
-			to_desc: Some(format!("{:#?}", b)),
+			from_desc: Some(format!("{:?}", a)),
+			to_desc: Some(format!("{:?}", b)),
 			base_path: base_path.to_string(),
 		})
 	};
@@ -550,7 +550,7 @@ fn element_diff(base_el: &JsonElement, compared_el: &JsonElement, base_path: &st
 							diffs.push(JsonDiff {
 								diff_type: Added,
 								from_desc: None,
-								to_desc: Some(format!("{:#?}", new_elm)),
+								to_desc: Some(format!("{:?}", new_elm)),
 								base_path: base_path.to_string(),
 							})
 						}
@@ -562,7 +562,7 @@ fn element_diff(base_el: &JsonElement, compared_el: &JsonElement, base_path: &st
 						for del_elm in &base_vec[last..] {
 							diffs.push(JsonDiff {
 								diff_type: Deleted,
-								from_desc: Some(format!("{:#?}", del_elm)),
+								from_desc: Some(format!("{:?}", del_elm)),
 								to_desc: None,
 								base_path: base_path.to_string(),
 							})
@@ -591,7 +591,7 @@ fn element_diff(base_el: &JsonElement, compared_el: &JsonElement, base_path: &st
 							None => {
 								diffs.push(JsonDiff {
 									diff_type: Deleted,
-									from_desc: Some(format!("{:#?}", bv)),
+									from_desc: Some(format!("{:?}", bv)),
 									to_desc: None,
 									base_path: new_bp,
 								})
@@ -607,7 +607,7 @@ fn element_diff(base_el: &JsonElement, compared_el: &JsonElement, base_path: &st
 								diffs.push(JsonDiff {
 									diff_type: Added,
 									from_desc: None,
-									to_desc: Some(format!("{:#?}", cv)),
+									to_desc: Some(format!("{:?}", cv)),
 									base_path: new_bp,
 								})
 							}
