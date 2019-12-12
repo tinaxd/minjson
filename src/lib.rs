@@ -131,12 +131,58 @@ pub struct PrettySetting {
 	pub indent_width: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum JsonNum {
+	Integer(i64),
+	Double(f64),
+}
+
+impl JsonNum {
+	pub fn is_equal(&self, other: &JsonNum, threshold: f64) -> bool {
+		use JsonNum::*;
+
+		match self {
+			Integer(si) => {
+				match other {
+					Integer(oi) => {
+						si == oi
+					},
+					Double(od) => {
+						(*si as f64 - od).abs() < threshold
+					}
+				}
+			},
+
+			Double(sd) => {
+				match other {
+					Integer(oi) => {
+						(*oi as f64 - sd).abs() < threshold
+					},
+					Double(od) => {
+						(sd - od).abs() < threshold
+					}
+				}
+			}
+		}
+	}
+}
+
+impl std::fmt::Display for JsonNum {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+		match self {
+			JsonNum::Integer(i) => write!(formatter, "{}", i),
+			JsonNum::Double(d) => write!(formatter, "{}", d),
+		}
+	}
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum JsonElement {
-	JsonNumber(f64),
+	JsonNumber(JsonNum),
 	JsonString(String),
 	JsonArray(Vec<JsonElement>),
-	JsonObject(HashMap<String, JsonElement>)
+	JsonObject(HashMap<String, JsonElement>),
+	JsonNull,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -203,6 +249,8 @@ fn parse_json(json: &mut JsonLexer) -> Result<JsonElement, String> {
 			//println!("ARRAY");
 			json_elem = Some(parse_json_array(json));
 			break;
+		} else if ch == 'n' {
+			json_elem = Some(parse_json_null(json));
 		} else {
 			//println!("NUMBER");
 			// TODO Number parsing
@@ -344,37 +392,70 @@ fn parse_json_number(json: &mut JsonLexer) -> Result<JsonElement, String> {
 
 	let is_minus = first_char == '-';
 
-	let mut num: f64 = if first_char.is_ascii_digit() {
-		first_char.to_digit(10).unwrap() as f64
-	} else {
-		0.0
-	};
+	let mut int_nums = Vec::new();
+	let mut float_nums = Vec::new();
+	let mut fp = false;
 
-	let mut fp = 0;
+	if first_char.is_ascii_digit() {
+		int_nums.push(first_char.to_digit(10).unwrap());
+	}
+	
+	let err = None;
 	while let Some(ch) = json.next() {
 		if ch.is_whitespace() {
-			continue;
-		} else if ch.is_ascii_digit() { // 0 - 9
-			if fp == 0 {
-				num *= 10.0;
-				num += ch.to_digit(10).unwrap() as f64;
+			// End of JSON number
+			break;
+		} else if ch.is_ascii_digit() {
+			let num = ch.to_digit(10).unwrap();
+			if !fp {
+				int_nums.push(num);
 			} else {
-				num += (ch.to_digit(10).unwrap() as f64) / (10 ^ fp) as f64;
+				float_nums.push(num);
 			}
 		} else if ch == '.' {
-			fp = 1;
+			fp = true;
 		} else {
-			// End of number
 			json.back();
 			break;
 		}
 	}
 
-	if is_minus {
-		num *= -1.0;
-	}
+	match err {
+		Some(e) => e,
+		None => {
+			let jn = if !fp {
+				let mut intnum: i64 = 0;
+				for (i, n) in int_nums.iter().enumerate() {
+					if i != 0 { intnum *= 10; }
+					intnum += *n as i64;
+				}
+				if is_minus {
+					intnum = -intnum;
+				}
+				JsonNum::Integer(intnum)
+			} else {
+				let mut intnum = 0;
+				for (i, n) in int_nums.iter().enumerate() {
+					if i != 0 { intnum *= 10; }
+					intnum += *n as i64;
+				}
+				let mut floatnum = 0.0;
+				for n in &float_nums {
+					floatnum += *n as f64;
+					floatnum /= 10.0;
+				}
+				let mut total = (intnum as f64) + floatnum;
+				if is_minus {
+					total = -total;
+				}
+				JsonNum::Double(total)
 
-	Ok(JsonElement::JsonNumber(num))
+			};
+
+			Ok(JsonElement::JsonNumber(jn))
+		}
+	}
+	
 }
 
 fn parse_json_array(json: &mut JsonLexer) -> Result<JsonElement, String> {
@@ -416,6 +497,33 @@ fn parse_json_array(json: &mut JsonLexer) -> Result<JsonElement, String> {
 		Some(r) => r,
 		None => Ok(JsonElement::JsonArray(elems)),
 	}
+}
+
+fn parse_json_null(json: &mut JsonLexer) -> Result<JsonElement, String> {
+	let errmsg = "Error while parsing JSON null.";
+	let eofmsg = "Reached EOF while parsing JSON null";
+
+	macro_rules! check_char {
+		($c:expr) => {{
+			let ch_n = json.next();
+			match ch_n {
+				Some(ch) => {
+					if ch != $c {
+						return Err(format!("{} Expected {}, got {}", errmsg, $c, ch));
+					}
+				}, None => {
+					return Err(eofmsg.to_string());
+				}
+			}
+		}}
+	}
+
+	// First 'n' is already consumed.
+	check_char!('u');
+	check_char!('l');
+	check_char!('l');
+
+	Ok(JsonElement::JsonNull)
 }
 
 pub fn build_json_graph(json: &str) -> Result<JsonElement, String> {
@@ -496,7 +604,9 @@ fn element_diff(base_el: &JsonElement, compared_el: &JsonElement, base_path: &st
 		JsonNumber(base_num) => {
 			match compared_el {
 				JsonNumber(compared_num) => {
-					if (base_num - compared_num).abs() < settings.floatDiffThreashold {
+					let is_equal_num = base_num.is_equal(compared_num, settings.floatDiffThreashold);
+
+					if is_equal_num {
 						Vec::new()
 					} else {
 						vec!(JsonDiff {
@@ -620,6 +730,13 @@ fn element_diff(base_el: &JsonElement, compared_el: &JsonElement, base_path: &st
 				_ => {
 					make_json_type_diff(base_el, compared_el)
 				}
+			}
+		},
+
+		JsonNull => {
+			match compared_el {
+				JsonNull => { Vec::new() },
+				_ => make_json_type_diff(base_el, compared_el)
 			}
 		}
 	}
