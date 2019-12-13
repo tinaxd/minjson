@@ -34,6 +34,7 @@ pub fn minimize_json(json: &str) -> String {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum JsonContext {
 	Object, Array, String, Number
 }
@@ -183,6 +184,7 @@ pub enum JsonElement {
 	JsonArray(Vec<JsonElement>),
 	JsonObject(HashMap<String, JsonElement>),
 	JsonNull,
+	JsonBool(bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -196,6 +198,7 @@ impl<'a> JsonLexer<'a> {
 		JsonLexer {chars: json, ptr: 0}
 	}
 
+	#[allow(dead_code)]
 	fn ptr(&mut self) -> usize {
 		self.ptr
 	}
@@ -214,15 +217,17 @@ impl<'a> JsonLexer<'a> {
 		self.ptr -= 1;
 	}
 
+	#[allow(dead_code)]
 	fn slice(&self, start: usize, end: Option<usize>) -> Option<&'a str> {
 		let end = end.unwrap_or(self.chars.len());
-		if start >= 0 && end <= self.chars.len() && start <= end {
+		if end <= self.chars.len() && start <= end {
 			Some(&self.chars[start..end])
 		} else {
 			None
 		}
 	}
 
+	#[allow(dead_code)]
 	fn reset(&mut self) {
 		self.ptr = 0;
 	}
@@ -250,7 +255,13 @@ fn parse_json(json: &mut JsonLexer) -> Result<JsonElement, String> {
 			json_elem = Some(parse_json_array(json));
 			break;
 		} else if ch == 'n' {
+			json.back();
 			json_elem = Some(parse_json_null(json));
+			break;
+		} else if ch == 't' || ch == 'f' {
+			json.back();
+			json_elem = Some(parse_json_bool(json));
+			break;
 		} else {
 			//println!("NUMBER");
 			// TODO Number parsing
@@ -399,7 +410,7 @@ fn parse_json_number(json: &mut JsonLexer) -> Result<JsonElement, String> {
 	if first_char.is_ascii_digit() {
 		int_nums.push(first_char.to_digit(10).unwrap());
 	}
-	
+
 	let err = None;
 	while let Some(ch) = json.next() {
 		if ch.is_whitespace() {
@@ -455,7 +466,7 @@ fn parse_json_number(json: &mut JsonLexer) -> Result<JsonElement, String> {
 			Ok(JsonElement::JsonNumber(jn))
 		}
 	}
-	
+
 }
 
 fn parse_json_array(json: &mut JsonLexer) -> Result<JsonElement, String> {
@@ -518,12 +529,49 @@ fn parse_json_null(json: &mut JsonLexer) -> Result<JsonElement, String> {
 		}}
 	}
 
-	// First 'n' is already consumed.
+	check_char!('n');
 	check_char!('u');
 	check_char!('l');
 	check_char!('l');
 
 	Ok(JsonElement::JsonNull)
+}
+
+fn parse_json_bool(json: &mut JsonLexer) -> Result<JsonElement, String> {
+	let first_char = match json.next() {
+		Some(ch) => ch,
+		None => return Err("Reached EOF while parsing JSON bool".to_string()),
+	};
+
+	macro_rules! check_char {
+		($c:expr) => {{
+			match json.next() {
+				Some(ch) => {
+					if ch != $c {
+						return Err(format!("Expected {}, got {}", $c, ch));
+					}
+				},
+				None => {
+					return Err("Reached EOF while parsing JSON bool".to_string());
+				}
+			}
+		}}
+	}
+
+	if first_char == 't' {
+		check_char!('r');
+		check_char!('u');
+		check_char!('e');
+		Ok(JsonElement::JsonBool(true))
+	} else if first_char == 'f' {
+		check_char!('a');
+		check_char!('l');
+		check_char!('s');
+		check_char!('e');
+		Ok(JsonElement::JsonBool(false))
+	} else {
+		Err("Error while parsing JSON bool".to_string())
+	}
 }
 
 pub fn build_json_graph(json: &str) -> Result<JsonElement, String> {
@@ -542,7 +590,7 @@ impl std::fmt::Display for DiffType {
 		let tok = match self {
 			Added => "+++",
 			Deleted => "---",
-			Modified => "***", 
+			Modified => "***",
 		};
 		write!(formatter, "{}", tok)
 	}
@@ -558,13 +606,13 @@ pub struct JsonDiff {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DiffSetting {
-	pub floatDiffThreashold: f64,
+	pub float_diff_threashold: f64,
 }
 
 impl Default for DiffSetting {
 	fn default() -> DiffSetting {
 		DiffSetting {
-			floatDiffThreashold: 10e-6
+			float_diff_threashold: 10e-6
 		}
 	}
 }
@@ -604,7 +652,7 @@ fn element_diff(base_el: &JsonElement, compared_el: &JsonElement, base_path: &st
 		JsonNumber(base_num) => {
 			match compared_el {
 				JsonNumber(compared_num) => {
-					let is_equal_num = base_num.is_equal(compared_num, settings.floatDiffThreashold);
+					let is_equal_num = base_num.is_equal(compared_num, settings.float_diff_threashold);
 
 					if is_equal_num {
 						Vec::new()
@@ -736,6 +784,25 @@ fn element_diff(base_el: &JsonElement, compared_el: &JsonElement, base_path: &st
 		JsonNull => {
 			match compared_el {
 				JsonNull => { Vec::new() },
+				_ => make_json_type_diff(base_el, compared_el)
+			}
+		},
+
+		JsonBool(base_b) => {
+			match compared_el {
+				JsonBool(compared_b) => {
+					if base_b == compared_b {
+						Vec::new()
+					} else {
+						vec![JsonDiff {
+							diff_type: Modified,
+							from_desc: Some(base_b.to_string()),
+							to_desc: Some(compared_b.to_string()),
+							base_path: base_path.to_string(),
+						}]
+					}
+				},
+
 				_ => make_json_type_diff(base_el, compared_el)
 			}
 		}
