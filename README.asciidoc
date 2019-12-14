@@ -6,6 +6,8 @@ image:https://travis-ci.org/tinaxd/minjson.svg?branch=master["Build Status", lin
 How to use
 ----------
 ```bash
-cat test.json | ./minjson.exe minify > test.min.json
-cat test.json | ./minjson.exe pretty > test.pretty.json
+./minjson -m minify --in test.json --out test.min.json
+./minjson -m pretty --in test.json --out test.pretty.json
+./minjson -m inspect --in test.json
+./minjson -m diff --in test.json --in2 test2.json
 ```
