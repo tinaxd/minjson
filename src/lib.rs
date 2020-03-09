@@ -105,6 +105,123 @@ enum JsonContext {
 	Object, Array, String, Number
 }
 
+pub struct JsonFormatter<'a> {
+	curr_indentlv: u32,
+	ctx: Vec<JsonContext>,
+	skip_char: bool,
+	last_comma: bool,
+	buffer: JsonMinimizer<'a>,
+	settings: PrettySetting,
+	next_chars: std::collections::VecDeque<char>
+}
+
+impl<'a> JsonFormatter<'a> {
+	pub fn new_from_str(s: &'a str, settings: PrettySetting) -> Self {
+		Self::new_from_minimizer(JsonMinimizer::new_from_str(s), settings)
+	}
+
+	pub fn new_from_chars(chars: std::str::Chars<'a>, settings: PrettySetting) -> Self {
+		Self::new_from_minimizer(JsonMinimizer::new_from_chars(chars), settings)
+	}
+
+	pub fn new_from_minimizer(minimizer: JsonMinimizer<'a>, settings: PrettySetting) -> Self {
+		JsonFormatter {
+			curr_indentlv: 0,
+			ctx: vec![JsonContext::Object],
+			skip_char: false,
+			last_comma: false,
+			buffer: minimizer,
+			settings,
+			next_chars: std::collections::VecDeque::new(),
+		}
+	}
+}
+
+impl Iterator for JsonFormatter<'_> {
+	type Item = char;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let repeat_chars = |ch, n| std::iter::repeat(ch).take(n);
+
+		if let c@Some(_) = self.next_chars.pop_front() {
+			return c;
+		}
+
+		while let Some(ch) = self.buffer.next() {
+			if self.skip_char {
+				self.skip_char = false;
+				self.last_comma = false;
+				self.next_chars.push_back(ch);
+				break;
+			}
+
+			else if let Some(c) = self.ctx.last() {
+				if *c == JsonContext::String {
+					if ch == '\\' {
+						self.skip_char = true;
+					} else if ch == '"' {
+						self.ctx.pop();
+					}
+					self.last_comma = false;
+					self.next_chars.push_back(ch);
+					break;
+				}
+			}
+
+			if ch == '"' {
+				self.last_comma = false;
+				self.ctx.push(JsonContext::String);
+				self.next_chars.push_back(ch);
+			}
+
+			else if ch == ',' {
+				self.last_comma = true;
+				self.next_chars.push_back(ch);
+				self.next_chars.push_back('\n');
+				self.next_chars.extend(repeat_chars(' ', (self.curr_indentlv * self.settings.indent_width) as usize));
+			}
+
+			else if ch == '[' || ch == '{' {
+				self.ctx.push(match ch {
+					'[' => JsonContext::Array,
+					'{' => JsonContext::Object,
+					_ => unreachable!(),
+				});
+				self.last_comma = false;
+				self.curr_indentlv += 1;
+				self.next_chars.push_back(ch);
+				self.next_chars.push_back('\n');
+				self.next_chars.extend(repeat_chars(' ', (self.curr_indentlv * self.settings.indent_width) as usize));
+			}
+	
+			else if ch == ']' || ch == '}' {
+				self.curr_indentlv -= 1;
+				self.ctx.pop();
+				
+				self.next_chars.push_back('\n');
+				self.next_chars.extend(repeat_chars(' ', (self.curr_indentlv * self.settings.indent_width) as usize));
+				self.next_chars.push_back(ch);
+			}
+	
+			else if ch == ':' {
+				self.next_chars.push_back(ch);
+				self.next_chars.push_back(' ');
+			}
+	
+			else {
+				self.next_chars.push_back(ch);
+			}
+
+			return self.next_chars.pop_front();
+		}
+
+		self.next_chars.pop_front()
+	}
+}
+
+impl std::iter::FusedIterator for JsonFormatter<'_> {}
+
+#[deprecated(note = "use JsonFormatter instead.")]
 pub fn pretty_json(json: &str, setting: &PrettySetting) -> String {
 	let compressed = minimize_json(json);
 	let dirty = &compressed;

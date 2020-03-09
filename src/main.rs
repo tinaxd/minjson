@@ -102,7 +102,20 @@ fn main() -> () {
 			}
 		}
     } else if mode == "pretty" {
-    	write!(output, "{}", minjson::pretty_json(&strbuf, &minjson::PrettySetting{indent_width: 2})).unwrap();
+		let mut string = String::new();
+		match input.read_to_string(&mut string) {
+			Err(e) => {
+				eprintln!("Failed to read json file: {}", e.to_string());
+				return;
+			},
+			Ok(_) => {
+				for ch in minjson::JsonFormatter::new_from_str(&string, minjson::PrettySetting{indent_width: 2}) {
+					let mut buf = [0; 4];
+					ch.encode_utf8(&mut buf);
+					output.write_all(&buf).unwrap();
+				}
+			}
+		}
     } else if mode == "inspect" {
     	match minjson::build_json_graph(&strbuf) {
     		Ok(g) => write!(output, "{}", format!("{:#?}", g)).unwrap(),
