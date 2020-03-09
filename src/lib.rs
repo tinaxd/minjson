@@ -1,5 +1,71 @@
 use std::collections::HashMap;
 
+#[derive(Debug)]
+pub struct JsonMinimizer<'a> {
+	in_str_literal: bool,
+	skip_char: bool,
+	buffer: std::str::Chars<'a>,
+}
+
+impl<'a> JsonMinimizer<'a> {
+	pub fn new_from_str(chars: &'a str) -> Self {
+		JsonMinimizer {
+			in_str_literal: false,
+			skip_char: false,
+			buffer: chars.chars(),
+		}
+	}
+
+	pub fn new_from_chars(chars: std::str::Chars<'a>) -> Self {
+		JsonMinimizer {
+			in_str_literal: false,
+			skip_char: false,
+			buffer: chars,
+		}
+	}
+}
+
+impl Iterator for JsonMinimizer<'_> {
+	type Item = char;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		while let Some(ch) = self.buffer.next() {
+			if self.skip_char {
+				self.skip_char = false;
+				return Some(ch);
+			}
+			if self.in_str_literal {
+				if ch == '\\' {
+					self.skip_char = true;
+					return Some(ch);
+				}
+				if ch == '\"' {
+					self.in_str_literal = false;
+					return Some(ch);
+				}
+				return Some(ch);
+			}
+			if ch.is_whitespace() {
+				continue;
+			}
+			if ch == '\"' {
+				self.in_str_literal = true;
+				return Some(ch);
+			}
+			return Some(ch);
+		}
+
+		None
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		self.buffer.size_hint()
+	}
+}
+
+impl std::iter::FusedIterator for JsonMinimizer<'_> {}
+
+#[deprecated(note = "Please use JsonMinimizer instead.")]
 pub fn minimize_json(json: &str) -> String {
 	let mut result = String::new();
 	let mut in_str_literal = false;

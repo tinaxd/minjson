@@ -56,17 +56,58 @@ fn main() -> () {
 	} else {
 		io::stdin().read_to_string(&mut strbuf).expect("Unable to read json");
 	}
+
+	let mut input: Box<dyn Read> = {
+		if let Some(inpath) = app.value_of("in") {
+			match File::open(inpath) {
+				Ok(i) => Box::new(std::io::BufReader::new(i)),
+				Err(e) => {
+					eprintln!("{}", e.to_string());
+					return;
+				}
+			}
+		} else {
+			Box::new(std::io::BufReader::new(std::io::stdin()))
+		}
+	};
+
+	let mut output: Box<dyn Write> = {
+		if let Some(outpath) = app.value_of("out") {
+			let outfile = File::create(outpath);
+			match outfile {
+				Ok(o) => Box::new(std::io::BufWriter::new(o)),
+				Err(e) => {
+					eprintln!("File writing err {}", e.to_string());
+					return;
+				}
+			}
+		} else {
+			Box::new(std::io::BufWriter::new(std::io::stdout()))
+		}
+	};
     
-    let res: String;
     if mode == "minify" {
-    	res = minjson::minimize_json(&strbuf);
+		let mut string = String::new();
+		match input.read_to_string(&mut string) {
+			Err(e) => {
+				eprintln!("Failed to read json file: {}", e.to_string());
+				return;
+			},
+			Ok(_) => {
+				for ch in minjson::JsonMinimizer::new_from_str(&string) {
+					let mut buf = [0; 4];
+					ch.encode_utf8(&mut buf);
+					output.write_all(&buf).unwrap();
+				}
+			}
+		}
     } else if mode == "pretty" {
-    	res = minjson::pretty_json(&strbuf, &minjson::PrettySetting{indent_width: 2});
+    	write!(output, "{}", minjson::pretty_json(&strbuf, &minjson::PrettySetting{indent_width: 2})).unwrap();
     } else if mode == "inspect" {
     	match minjson::build_json_graph(&strbuf) {
-    		Ok(g) => res = format!("{:#?}", g),
-    		Err(e) => res = format!("{}\n", e.to_string()),
-    	}
+    		Ok(g) => write!(output, "{}", format!("{:#?}", g)).unwrap(),
+    		Err(e) => write!(output, "{}", format!("{}\n", e.to_string())).unwrap(),
+    	};
     } else if mode == "diff" {
     	if let Some(in2path) = app.value_of("in2") {
     		let mut strbuf2 = String::new();
@@ -89,9 +130,9 @@ fn main() -> () {
 						buf.push_str(&pretty_diff(d));
 						buf.push('\n');
 					}
-					res = buf;
+					write!(output, "{}", buf).unwrap();
 				},
-				Err(e) => res = e.to_string(),
+				Err(e) => { write!(output, "{}", e.to_string()).unwrap(); },
 			}
     	} else {
     		eprintln!("Must specify in2 option");
@@ -99,23 +140,6 @@ fn main() -> () {
     	}
     } else {
     	unreachable!()
-    }
-
-    if let Some(outpath) = app.value_of("out") {
-		let outfile = File::create(outpath);
-		if outfile.is_err() {
-			eprintln!("File writing err {}", outfile.unwrap_err().to_string());
-			return;
-		} else {
-    		let mut outfile = outfile.unwrap();
-    		if let Err(e) = write!(outfile, "{}", res) {
-    			eprintln!("{}", e);
-    			return;
-    		}
-		}
-    } else {
-    	// stdout output
-    	print!("{}", res);
     }
 }
 
