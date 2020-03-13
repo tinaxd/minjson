@@ -463,8 +463,9 @@ fn parse_json(json: &mut JsonLexer) -> Result<JsonElement, String> {
 fn parse_json_object(json: &mut JsonLexer) -> Result<JsonElement, String> {
 	let mut pairs = HashMap::new();
 
-	let mut res = None;
-	'top: while let (key, value) = parse_json_object_pair(json)? {
+	let res;
+	'top: loop {
+		let (key, value) = parse_json_object_pair(json)?;
 
 		//println!("objKEY: {:?}, objVALUE: {:?}", &key, &value);
 		pairs.insert(key, value);
